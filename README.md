@@ -70,6 +70,11 @@ git clone https://github.com/pjohnson519/dl-mri-recon-lab-3.git
 1. In your browser: **[https://ondemand.hpc.nyumc.org](https://ondemand.hpc.nyumc.org)**
 2. Log in with your KID.
 3. Start **Interactive App → Jupyter** with:
+   - Anaconda Version: Personal Environment
+   - Personal Anacoda: anaconda3/gpu/5.2.0
+   - Personal environment: /gpfs/scratch/johnsp23/DLrecon_lab1/envs/score-mri
+   - Instane type: advanced
+   - partition: a100_dev
    - GPU: `a100` (the lab's sampler runs here)
    - Time: 2 hours
    - Memory: 32 GB
