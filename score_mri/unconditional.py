@@ -37,23 +37,24 @@ def unconditional_sample(
     predictor = ReverseDiffusionPredictor(sde, score_fn, probability_flow=False)
     corrector = LangevinCorrector(sde, score_fn, snr=snr, n_steps=n_corrector_steps)
 
-    # Cold start: x_T ~ N(0, sigma_max^2 * I)
-    x = sde.prior_sampling(shape).to(device)
-    x_mean = x.clone()
+    with torch.no_grad():
+        # Cold start: x_T ~ N(0, sigma_max^2 * I)
+        x = sde.prior_sampling(shape).to(device)
+        x_mean = x.clone()
 
-    timesteps = torch.linspace(sde.T, eps, sde.N, device=device)
-    snap_every = max(sde.N // max(n_snapshots, 1), 1) if snap_callback is not None else None
+        timesteps = torch.linspace(sde.T, eps, sde.N, device=device)
+        snap_every = max(sde.N // max(n_snapshots, 1), 1) if snap_callback is not None else None
 
-    for i in tqdm(range(sde.N)):
-        t = timesteps[i]
-        vec_t = torch.ones(shape[0], device=device) * t
-        x, x_mean = predictor.update_fn(x, vec_t)
-        x, x_mean = corrector.update_fn(x, vec_t)
+        for i in tqdm(range(sde.N)):
+            t = timesteps[i]
+            vec_t = torch.ones(shape[0], device=device) * t
+            x, x_mean = predictor.update_fn(x, vec_t)
+            x, x_mean = corrector.update_fn(x, vec_t)
 
-        if snap_every is not None and ((i + 1) % snap_every == 0 or i == sde.N - 1):
-            snap_callback(i, x_mean.detach().cpu().numpy().squeeze())
+            if snap_every is not None and ((i + 1) % snap_every == 0 or i == sde.N - 1):
+                snap_callback(i, x_mean.detach().cpu().numpy().squeeze())
 
-    img = x_mean.detach().cpu().numpy().squeeze()
+        img = x_mean.detach().cpu().numpy().squeeze()
     # The model was trained on [0, 1] magnitudes; clip to a visible range.
     img = np.clip(img, 0.0, 1.0).astype(np.float32)
     return img
