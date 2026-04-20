@@ -87,6 +87,19 @@ TORCH_EXT  = Path("/gpfs/scratch/johnsp23/DLrecon_lab1/torch_ext_score")
 import os
 os.environ["TORCH_EXTENSIONS_DIR"] = str(TORCH_EXT)
 
+# PyTorch's JIT extension loader still runs `which c++` even when the cache is
+# warm, so we need the system utilities + gcc + nvcc on PATH. OnDemand's Jupyter
+# launches with a minimal PATH that omits these; inject them here before any
+# score_mri imports trigger JIT.
+for extra_path in [
+    "/gpfs/share/apps/gcc/11.2.0/bin",    # gcc, g++, c++
+    "/gpfs/share/apps/cuda/12.6/bin",     # nvcc
+    "/usr/bin", "/bin",                    # which, etc.
+]:
+    if extra_path not in os.environ.get("PATH", "").split(":"):
+        os.environ["PATH"] = f"{extra_path}:{os.environ.get('PATH', '')}"
+os.environ.setdefault("CUDA_HOME", "/gpfs/share/apps/cuda/12.6")
+
 assert CKPT.exists(),      f"Missing checkpoint: {CKPT}"
 assert DEMO_ROOT.exists(), f"Missing demo data:  {DEMO_ROOT}"
 print(f"Checkpoint: {CKPT}  ({CKPT.stat().st_size/1e6:.0f} MB)")
