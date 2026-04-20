@@ -154,33 +154,43 @@ print(f"Model loaded.  sigma_min={sde.sigma_min:.3f}  sigma_max={sde.sigma_max:.
 """))
 
 # ===================== Part 2: Unconditional =====================
-cells.append(md("""## Part 2 — Unconditional generation (watch a knee emerge from noise)
+cells.append(md("""## Part 2 — Unconditional generation (watch knees emerge from noise)
 
 Before doing reconstruction, let's see what the score network alone has learned.
 
-We initialize a single 320×320 array with pure Gaussian noise at σ = σ_max ≈ 378,
-then run the reverse SDE (predictor-corrector) down to σ = σ_min = 0.01.
-**No MRI data is involved** — no k-space, no mask, no coils. The sampler uses
-nothing but the prior.
+For each run we initialize a 320×320 array with pure Gaussian noise at
+σ = σ_max ≈ 378, then run the reverse SDE (predictor-corrector) down to
+σ = σ_min = 0.01. **No MRI data is involved** — no k-space, no mask, no coils.
+The sampler uses nothing but the prior.
 
-Run the cell below. It takes ~15-20 min on an A100. While it runs, scroll down and
-read **Part 1 — Theory** to use the time.
+We run **three samples with different random seeds** so you can see that the prior
+captures a *distribution* of plausible knees, not one specific image. Different
+seed → different patient's knee-like image, all drawn from the learned manifold.
+
+Takes ~3 min per sample on an A100 (~9 min total). While it runs, scroll down and
+read **Part 1 — Theory**.
 """))
 
 cells.append(code("""from unconditional import unconditional_sample
 
-# Collect snapshots at 10 evenly-spaced points so we can visualize the trajectory.
+# Collect a snapshot trajectory for the first seed only; the filmstrip tells the
+# "noise -> knee" story once. For seeds 1 and 2 we keep just the final image.
 snapshots = []
 def collect(step_idx, img_np):
     snapshots.append((step_idx, img_np))
 
 sde.N = 500
-uncond_img = unconditional_sample(
-    score_model, sde, shape=(1, 1, 320, 320),
-    snr=0.16, seed=0,
-    snap_callback=collect, n_snapshots=10,
-)
-print(f"Captured {len(snapshots)} snapshots")
+uncond_imgs = []
+for i, seed in enumerate([0, 1, 2]):
+    print(f"Sampling seed={seed} ...")
+    img = unconditional_sample(
+        score_model, sde, shape=(1, 1, 320, 320),
+        snr=0.16, seed=seed,
+        snap_callback=(collect if i == 0 else None), n_snapshots=10,
+    )
+    uncond_imgs.append(img)
+uncond_img = uncond_imgs[0]    # the "canonical" one used elsewhere
+print(f"Generated {len(uncond_imgs)} samples; captured {len(snapshots)} filmstrip frames.")
 """))
 
 cells.append(code("""# Filmstrip: show snapshots from noise -> knee
@@ -197,12 +207,18 @@ fig.tight_layout()
 plt.show()
 """))
 
-cells.append(code("""# Same final image, but displayed with clean [0, max] grayscale scaling so the
-# anatomy actually pops. This is the prior on its own — no measurements involved.
-fig, ax = plt.subplots(1, 1, figsize=(6, 6))
-ax.imshow(uncond_img, cmap="gray", vmin=0, vmax=uncond_img.max())
-ax.set_title("Final unconditional sample — a plausible knee, generated purely from noise")
-ax.set_axis_off()
+cells.append(code("""# All three final samples side-by-side with clean [0, max] grayscale scaling.
+# Each image is a completely different "patient" — drawn independently from the
+# learned prior distribution. The fact that they all look like plausible knees
+# (and NOT like the same knee) is the point.
+fig, axes = plt.subplots(1, len(uncond_imgs), figsize=(5 * len(uncond_imgs), 5))
+if len(uncond_imgs) == 1: axes = [axes]
+for ax, img, seed in zip(axes, uncond_imgs, [0, 1, 2]):
+    ax.imshow(img, cmap="gray", vmin=0, vmax=img.max())
+    ax.set_title(f"Unconditional sample, seed={seed}")
+    ax.set_axis_off()
+fig.suptitle("Three plausible knees generated from pure noise by the score prior alone",
+             y=1.02, fontsize=12)
 plt.tight_layout(); plt.show()
 """))
 
@@ -407,14 +423,18 @@ print(f"\\n[{SAMPLING_MODE} N={N}]  SSIM {recon_ssim:.4f}  PSNR {recon_psnr:.2f}
       f"(Δ SSIM vs ZF: {recon_ssim - zf_ssim:+.4f})")
 """))
 
-cells.append(code("""# Recon filmstrip — how the sampler's RSS iterate evolved.
+cells.append(code("""# Recon filmstrip — how the sampler's RSS estimate evolved.
+# Each snapshot uses its own scale so both the noisy early iterates AND the
+# clean late iterates are visible. Watch the knee emerge from noise, constrained
+# by the measurements, over 10 snapshots across the 500 PC steps.
 fig, axes = plt.subplots(2, 5, figsize=(15, 6))
-vmax = max(s[1].max() for s in recon_snaps) or 1.0
 for ax, (step_idx, rss) in zip(axes.ravel(), recon_snaps):
+    vmax = rss.max() or 1.0
     ax.imshow(rss, cmap='gray', vmin=0, vmax=vmax)
     ax.set_xticks([]); ax.set_yticks([])
     ax.set_title(f"step {step_idx+1}/{sde.N}", fontsize=9)
-fig.suptitle(f"Reconstruction trajectory — {SAMPLING_MODE} start", y=1.02)
+fig.suptitle(f"Reconstruction trajectory ({SAMPLING_MODE} start) — per-step auto-scaled",
+             y=1.02, fontsize=12)
 fig.tight_layout(); plt.show()
 """))
 
