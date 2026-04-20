@@ -483,34 +483,96 @@ Some things to notice:
 """))
 
 # ===================== Part 5: Homework =====================
-cells.append(md("""## Part 5 — Homework: a different mask type
+cells.append(md("""## Part 5 — Homework: change the sampling pattern
 
-Try re-running reconstruction on the second demo slice (`pdfs_file1001090` slice 1)
-with a **different mask**. Options:
+So far you used the paper's default **gaussian1d** mask with `acc_factor=4` and
+`center_fraction=0.08`. That keeps ~26% of k-space columns (84 out of 320), densely
+concentrated around the DC line.
 
-- **uniform1d**: same ACS, but uniformly-random outer columns (no gaussian bias toward center)
-- **random2d**: scattered random pixels in 2D (much harder problem)
-- **equispaced**: fixed stride in 1D (classical ACS pattern)
+**Your task**: reconstruct the second demo slice (`pdfs_file1001090` slice 1) using
+**a different mask density**. Just change the two knobs on the existing
+`gaussian1d_mask` function and rerun:
 
-A score prior trained on clean knee images should, in principle, work with *any*
-mask — that's a big difference from VarNet, which is mask-specific. Does the
-SSIM gain over ZF stay ~constant, or does the mask choice matter?
+- **`acc_factor`** — higher = fewer columns sampled = harder recon. Try `6` or `8`.
+- **`center_fraction`** — bigger = more dense low-frequency ACS block. Try `0.04` (harder)
+  or `0.16` (easier).
 
-Starter cell below — fill in `your_mask_fn()` and compare.
+A score prior trained on clean images should, in principle, work with *any* mask
+density — that's the big difference from VarNet, which is specifically trained for
+one mask. The question: does the SSIM gain over ZF stay roughly constant as you make
+the mask harder, or does the gap collapse?
+
+Suggested experiments (run at least one):
+
+| `acc_factor` | `center_fraction` | effective accel | expected difficulty |
+|---|---|---|---|
+| 4 | 0.08 | ~3.8× | (the default — what you already have) |
+| 6 | 0.08 | ~5.4× | harder |
+| 8 | 0.04 | ~7.5× | much harder |
+| 4 | 0.16 | ~3.5× | easier |
+
+The starter cell below does everything the Part 3 cells did, but takes `acc_factor`
+and `center_fraction` as parameters. Just pick values, run it, and compare the
+resulting numbers with your cold/warm partner and with the default.
 """))
 
-cells.append(code("""# --- Homework starter ---
-def your_mask_fn(size=320, acc=4, cf=0.08, seed=0):
-    '''Return a (size, size) float32 mask.
-    Start by copying gaussian1d_mask above and modify the outer-column sampling.'''
-    raise NotImplementedError("Replace this with your mask implementation.")
+cells.append(code("""# --- Homework: reconstruct with different acc_factor / center_fraction ---
+# Edit these two numbers; leave everything else alone.
+HW_ACC            = 6       # try 6 or 8 for harder, or go back to 4 for baseline
+HW_CENTER_FRAC    = 0.08    # try 0.04 (harder) or 0.16 (easier)
 
-# When you have a working mask, run:
-# mask_np_hw = your_mask_fn()
-# ... then copy the Part 3 cells pointing at the second demo slice.
 DEMO_VOL_HW  = DEMO_ROOT / "pdfs_file1001090"
 SLICE_IDX_HW = 1
-print(f"Homework volume: {DEMO_VOL_HW.name}, slice {SLICE_IDX_HW}")
+
+# Rebuild the forward problem with the new mask.
+kspace_hw = np.load(DEMO_VOL_HW / "kspace.npy")[SLICE_IDX_HW]
+full_coils_hw = ifft2c_np(kspace_hw).astype(np.complex64)
+label_rss_hw  = np.sqrt(np.sum(np.abs(full_coils_hw)**2, axis=0)).astype(np.float32)
+scale_hw      = float(label_rss_hw.max())
+label_n_hw    = np.clip(label_rss_hw / scale_hw, 0, 1)
+
+mask_hw = gaussian1d_mask(W, acc=HW_ACC, cf=HW_CENTER_FRAC)
+zf_coils_hw = ifft2c_np(kspace_hw * mask_hw).astype(np.complex64)
+zf_n_hw     = np.clip(np.sqrt(np.sum(np.abs(zf_coils_hw)**2, axis=0)) / scale_hw, 0, 1)
+zf_ssim_hw  = skssim(label_n_hw, zf_n_hw, data_range=1.0)
+zf_psnr_hw  = skpsnr(label_n_hw, zf_n_hw, data_range=1.0)
+n_cols_hw   = int((mask_hw.sum(axis=0) > 0).sum())
+print(f"HW mask: acc={HW_ACC}, cf={HW_CENTER_FRAC}  ->  {n_cols_hw}/{W} cols = effective {W/n_cols_hw:.2f}x")
+print(f"HW ZF baseline: SSIM {zf_ssim_hw:.4f}  PSNR {zf_psnr_hw:.2f} dB")
+
+# Now run the same sampler as Part 3 (cold or warm per SAMPLING_MODE).
+mask_t_hw  = torch.from_numpy(mask_hw).view(1, 1, H, W).to(device)
+img_hw     = normalize_complex(torch.from_numpy(full_coils_hw)).view(1, 15, H, W).to(device)
+k_hw       = fft2_m(img_hw)
+under_k_hw = k_hw * mask_t_hw
+under_img_hw = ifft2_m(under_k_hw)
+sens_hw    = mr.app.EspiritCalib(k_hw.cpu().detach().squeeze().numpy(), show_pbar=False).run()
+sens_t_hw  = torch.from_numpy(sens_hw).view(1, 15, H, W).to(device)
+
+sde.N = 500
+sampler_hw = get_pc_fouriercs_RI_coil_SENSE_warm(
+    sde, ReverseDiffusionPredictor, LangevinCorrector, inverse_scaler,
+    snr=0.16, n_steps=1, m_steps=50, mask=mask_t_hw, sens=sens_t_hw,
+    lamb_schedule=lamb_schedule, probability_flow=False,
+    continuous=cfg.training.continuous, denoise=True,
+    warm_start=(SAMPLING_MODE == "warm"), warm_sigma=10.0,
+)
+tic = time.time()
+x_hw = sampler_hw(score_model, scaler(under_img_hw), y=under_k_hw)
+dt_hw = time.time() - tic
+
+recon_hw = np.abs(root_sum_of_squares(x_hw, dim=1).squeeze().cpu().detach().numpy())
+recon_n_hw = np.clip(recon_hw / (recon_hw.max() or 1.0), 0, 1)
+recon_ssim_hw = skssim(label_n_hw, recon_n_hw, data_range=1.0)
+recon_psnr_hw = skpsnr(label_n_hw, recon_n_hw, data_range=1.0)
+print(f"HW recon:  SSIM {recon_ssim_hw:.4f}  PSNR {recon_psnr_hw:.2f} dB  "
+      f"(Δ SSIM vs HW ZF: {recon_ssim_hw - zf_ssim_hw:+.4f})  [{dt_hw:.0f} s]")
+
+fig, ax = plt.subplots(1, 3, figsize=(12, 4))
+ax[0].imshow(label_n_hw, cmap='gray', vmin=0, vmax=1); ax[0].set_title("GT"); ax[0].set_axis_off()
+ax[1].imshow(zf_n_hw,    cmap='gray', vmin=0, vmax=1); ax[1].set_title(f"ZF ({zf_ssim_hw:.3f})"); ax[1].set_axis_off()
+ax[2].imshow(recon_n_hw, cmap='gray', vmin=0, vmax=1); ax[2].set_title(f"Score ({recon_ssim_hw:.3f})"); ax[2].set_axis_off()
+plt.tight_layout(); plt.show()
 """))
 
 # ===================== Footer =====================
