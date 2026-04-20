@@ -82,23 +82,28 @@ CKPT       = Path("/gpfs/scratch/johnsp23/DLrecon_lab1/pretrained/score_magnitud
 DEMO_ROOT  = Path("/gpfs/scratch/johnsp23/DLrecon_lab1/data/lab3_demo")
 TORCH_EXT  = Path("/gpfs/scratch/johnsp23/DLrecon_lab1/torch_ext_score")
 
-# This makes the custom CUDA ops (upfirdn2d, fused_act) reuse the pre-compiled
-# kernels in shared scratch, rather than re-compiling on your node (saves ~10 min).
+# Pin the toolchain BigPurple modules for JIT (OnDemand Jupyter starts with
+# CUDA 9.0 + GCC 4.8.5 on PATH, both too old for this PyTorch). We need to
+# force CUDA 12.6 + GCC 11.2, and point TORCH_EXTENSIONS_DIR at the pre-built
+# kernel cache so we don't wait 10 min for nvcc to rebuild.
 import os
-os.environ["TORCH_EXTENSIONS_DIR"] = str(TORCH_EXT)
+GCC_BIN  = "/gpfs/share/apps/gcc/11.2.0/bin"
+CUDA_DIR = "/gpfs/share/apps/cuda/12.6"
 
-# PyTorch's JIT extension loader still runs `which c++` even when the cache is
-# warm, so we need the system utilities + gcc + nvcc on PATH. OnDemand's Jupyter
-# launches with a minimal PATH that omits these; inject them here before any
-# score_mri imports trigger JIT.
-for extra_path in [
-    "/gpfs/share/apps/gcc/11.2.0/bin",    # gcc, g++, c++
-    "/gpfs/share/apps/cuda/12.6/bin",     # nvcc
-    "/usr/bin", "/bin",                    # which, etc.
-]:
-    if extra_path not in os.environ.get("PATH", "").split(":"):
-        os.environ["PATH"] = f"{extra_path}:{os.environ.get('PATH', '')}"
-os.environ.setdefault("CUDA_HOME", "/gpfs/share/apps/cuda/12.6")
+os.environ["CUDA_HOME"] = CUDA_DIR
+os.environ["CUDA_PATH"] = CUDA_DIR
+os.environ["CC"]  = f"{GCC_BIN}/gcc"
+os.environ["CXX"] = f"{GCC_BIN}/g++"
+
+# Strip pre-existing CUDA entries (may point at old CUDA 9.0) then prepend ours.
+clean_path = ":".join(p for p in os.environ.get("PATH", "").split(":")
+                      if "/cuda/" not in p and "/cuda-" not in p)
+os.environ["PATH"] = f"{GCC_BIN}:{CUDA_DIR}/bin:/usr/bin:/bin:{clean_path}"
+os.environ["LD_LIBRARY_PATH"] = (
+    f"{CUDA_DIR}/lib64:/gpfs/share/apps/gcc/11.2.0/lib64:"
+    + os.environ.get("LD_LIBRARY_PATH", "")
+)
+os.environ["TORCH_EXTENSIONS_DIR"] = str(TORCH_EXT)
 
 assert CKPT.exists(),      f"Missing checkpoint: {CKPT}"
 assert DEMO_ROOT.exists(), f"Missing demo data:  {DEMO_ROOT}"
