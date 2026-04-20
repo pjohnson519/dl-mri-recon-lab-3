@@ -184,9 +184,10 @@ print(f"Captured {len(snapshots)} snapshots")
 """))
 
 cells.append(code("""# Filmstrip: show snapshots from noise -> knee
+# Each snapshot uses its own symmetric scale so you can see structure emerge
+# from random noise even when intermediate iterates are huge in magnitude.
 fig, axes = plt.subplots(2, 5, figsize=(15, 6))
 for ax, (step_idx, img) in zip(axes.ravel(), snapshots):
-    # Normalize each snapshot for display (early ones are huge)
     vmax = max(abs(img.max()), abs(img.min())) or 1.0
     ax.imshow(img, cmap="gray", vmin=-vmax, vmax=vmax)
     ax.set_xticks([]); ax.set_yticks([])
@@ -194,6 +195,15 @@ for ax, (step_idx, img) in zip(axes.ravel(), snapshots):
 fig.suptitle("Unconditional reverse-SDE trajectory: noise → knee", y=1.02)
 fig.tight_layout()
 plt.show()
+"""))
+
+cells.append(code("""# Same final image, but displayed with clean [0, max] grayscale scaling so the
+# anatomy actually pops. This is the prior on its own — no measurements involved.
+fig, ax = plt.subplots(1, 1, figsize=(6, 6))
+ax.imshow(uncond_img, cmap="gray", vmin=0, vmax=uncond_img.max())
+ax.set_title("Final unconditional sample — a plausible knee, generated purely from noise")
+ax.set_axis_off()
+plt.tight_layout(); plt.show()
 """))
 
 # ===================== Part 1: Theory =====================
