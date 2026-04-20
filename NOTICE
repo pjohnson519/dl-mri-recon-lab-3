@@ -1,0 +1,56 @@
+dl-mri-recon-lab-3
+==================
+
+This repository is a teaching lab distributed under the Apache License, Version 2.0,
+and contains code from multiple sources. Please respect the attribution below.
+
+Vendored code from score-MRI
+----------------------------
+The `score_mri/` subdirectory contains code vendored (copied, then lightly modified
+as needed for teaching) from the upstream score-MRI repository:
+
+    score-MRI (https://github.com/HJ-harry/score-MRI)
+    Copyright 2022 Hyungjin Chung and Jong Chul Ye
+    Licensed under the Apache License, Version 2.0
+
+If you use this code — whether the vendored portion here, or the upstream repo
+directly — please cite the original paper:
+
+    Chung, H. & Ye, J. C. (2022).
+    Score-based diffusion models for accelerated MRI.
+    Medical Image Analysis, 80, 102479.
+    https://doi.org/10.1016/j.media.2022.102479
+    https://arxiv.org/abs/2110.05243
+
+Upstream score-MRI itself is a derivative of:
+
+    Score-SDE PyTorch (https://github.com/yang-song/score_sde_pytorch)
+    Copyright 2020 The Google Research Authors
+
+    "Score-Based Generative Modeling through Stochastic Differential Equations"
+    Song, Y., Sohl-Dickstein, J., Kingma, D. P., Kumar, A., Ermon, S., & Poole, B.
+    ICLR 2021
+    https://arxiv.org/abs/2011.13456
+
+The LICENSE file distributed with upstream score-MRI is included here as
+`LICENSE_score-MRI`. All files in `score_mri/` are covered by that license.
+
+Pretrained weights
+------------------
+The magnitude-prior checkpoint used by this lab (`pretrained/score_magnitude_knee320_ep95.pth`
+on shared scratch) was trained by the lab authors from scratch on the fastMRI
+multi-coil knee dataset, using code derived from score-MRI. These weights are
+NOT the original authors' published checkpoint (which was never publicly
+released); they were reproduced independently and follow the paper's magnitude-image
+training recipe as closely as possible.
+
+Data
+----
+The fastMRI knee dataset is distributed by NYU Langone Health for research
+purposes. This repository does NOT redistribute fastMRI data. See
+https://fastmri.med.nyu.edu/ for access.
+
+Lab teaching material
+---------------------
+The notebook, README, scripts, and all non-vendored files are authored by the
+dl-mri-recon-lab team at NYU Langone and distributed under Apache License 2.0.

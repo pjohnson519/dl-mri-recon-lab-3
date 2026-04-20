@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.ipynb_checkpoints/
+
+# Model / data artifacts (live on shared scratch, not in repo)
+*.pth
+*.npy
+*.h5
+*.hdf5
+weights/
+workdir/
+samples/
+results/
+runs/
+eval/
+
+# JIT extension cache
+torch_ext_*/
+build/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+*.swp
